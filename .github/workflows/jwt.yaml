@@ -1,0 +1,28 @@
+name: Test JWT
+
+on:
+  push:
+
+jobs:
+  Test-JWT:
+    name: Test JWT
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: run-jwt-action
+        name: Run JWT Action
+        uses: ./
+        with:
+          enable-display: true
+          payload: |
+            claim_key: claim_value
+
+      - env:
+          JWT_ACTION_OUTPUTS: ${{ toJSON(steps.run-jwt-action.outputs) }}
+        name: Examine JWT Action output
+        run: |
+          # Examine JWT Action output
+          echo ::group::JWT Action output
+          jq -C . <<<"${JWT_ACTION_OUTPUTS}"
+          echo ::endgroup::
