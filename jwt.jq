@@ -26,31 +26,33 @@ def url_safe_base64_encode:
   | url_safe_encode
   ;
 
+def jwt_regex:
+  "^(?<header>[0-9A-Za-z_-]+)\\.(?<payload>[0-9A-Za-z_-]+)\\.(?<signature>[0-9A-Za-z_-]+)$"
+  ;
+
 def validate:
-  (split(".") | length) as $jwt_fields
-  | if $jwt_fields != 3 then
-      "Invalid jwt - contains \($jwt_fields) fields, requires 3."
-      | error
-    else
-      .
-    end
+  test(jwt_regex; "")
   ;
 
 def decode_raw:
-  validate
-  | {
-    headers: (split(".")[0] | url_safe_base64_decode | fromjson),
-    payload: (split(".")[1] | url_safe_base64_decode | fromjson),
-    unsigned: (split(".")[0] + "." + split(".")[1]),
-    signature: (split(".")[2] | url_safe_decode),
-  }
+  if validate | not then
+    "Invalid JWT, does not match pattern." | error
+  else
+    capture(jwt_regex; "")
+    | {
+      header: (.header),
+      payload: (.payload | url_safe_base64_decode | fromjson),
+      unsigned: "\(.header).\(.payload)",
+      signature: (.signature | url_safe_decode),
+    }
+  end
   ;
 
 def verify($signature):
   . as $jwt
-  | decode_raw 
+  | decode_raw
   | . * {
-    algorithm: (.headers.alg),
+    algorithm: (.header.alg),
     jwt: $jwt,
     verified: (($signature | @base64d) == (.signature | @base64d)),
   }
