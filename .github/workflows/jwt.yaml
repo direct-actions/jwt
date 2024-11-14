@@ -10,8 +10,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - id: run-jwt-action
-        name: Run JWT Action
+      - name: JSON Web Token (JWT) - Decode
+        uses: direct-actions/jwt@v1
+        with:
+          enable-display: true
+          jwt: >
+            eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZ
+            SI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36P
+            Ok6yJV_adQssw5c
+
+      - env:
+          JWT_ACTION_OUTPUTS: ${{ toJSON(steps.jwt-encode.outputs) }}
+        name: Examine JWT Decode outputs
+        run: |
+          # Examine JWT Decode outputs
+          echo ::group::JWT Decode outputs
+          jq -C . <<<"${JWT_ACTION_OUTPUTS}"
+          echo ::endgroup::
+
+      - id: jwt-encode
+        name: JSON Web Token (JWT) - Encode
         uses: ./
         with:
           enable-display: true
@@ -19,10 +37,10 @@ jobs:
             claim_key: claim_value
 
       - env:
-          JWT_ACTION_OUTPUTS: ${{ toJSON(steps.run-jwt-action.outputs) }}
-        name: Examine JWT Action output
+          JWT_ACTION_OUTPUTS: ${{ toJSON(steps.jwt-encode.outputs) }}
+        name: Examine JWT Encode outputs
         run: |
-          # Examine JWT Action output
-          echo ::group::JWT Action output
+          # Examine JWT Encode outputs
+          echo ::group::JWT Encode outputs
           jq -C . <<<"${JWT_ACTION_OUTPUTS}"
           echo ::endgroup::
