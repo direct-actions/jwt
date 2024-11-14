@@ -14,10 +14,7 @@ jobs:
         uses: direct-actions/jwt@v1
         with:
           enable-display: true
-          jwt: >
-            eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZ
-            SI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36P
-            Ok6yJV_adQssw5c
+          jwt: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
 
       - env:
           JWT_ACTION_OUTPUTS: ${{ toJSON(steps.jwt-encode.outputs) }}
