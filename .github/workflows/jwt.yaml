@@ -10,14 +10,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: JSON Web Token (JWT) - Decode
-        uses: direct-actions/jwt@v1
+      - id: jwt-decode
+        name: JSON Web Token (JWT) - Decode
+        uses: ./
         with:
           enable-display: true
+          secret: your-256-bit-secret
           jwt: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
 
       - env:
-          JWT_ACTION_OUTPUTS: ${{ toJSON(steps.jwt-encode.outputs) }}
+          JWT_ACTION_OUTPUTS: ${{ toJSON(steps.jwt-decode.outputs) }}
         name: Examine JWT Decode outputs
         run: |
           # Examine JWT Decode outputs
@@ -31,7 +33,10 @@ jobs:
         with:
           enable-display: true
           payload: |
-            claim_key: claim_value
+            sub: '1234567890'
+            name: John Doe
+            iat: 1516239022
+          secret: 'your-256-bit-secret'
 
       - env:
           JWT_ACTION_OUTPUTS: ${{ toJSON(steps.jwt-encode.outputs) }}
