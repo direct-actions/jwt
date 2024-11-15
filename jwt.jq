@@ -31,16 +31,27 @@ def jwt_regex:
   ;
 
 def validate:
-  test(jwt_regex; "")
+  try (
+    if test(jwt_regex; "") then
+      capture(jwt_regex; "") as $captured
+      | $captured
+      | try (.header | url_safe_base64_decode | fromjson | $captured) catch ("JWT header invalid." | error)
+      | try (.payload | url_safe_base64_decode | fromjson | $captured) catch ("JWT payload invalid." | error)
+      | try (.signature | url_safe_base64_decode | $captured) catch ("JWT payload invalid." | error)
+    else
+      "Invalid JWT, unable to parse." | error
+    end
+    | "true"
+  ) catch .
   ;
 
 def decode_raw:
-  if validate | not then
-    "Invalid JWT, does not match pattern." | error
+  if validate != "true" then
+    validate | error
   else
     capture(jwt_regex; "")
     | {
-      header: (.header),
+      header: (.header | url_safe_base64_decode | fromjson),
       payload: (.payload | url_safe_base64_decode | fromjson),
       unsigned: "\(.header).\(.payload)",
       signature: (.signature | url_safe_decode),

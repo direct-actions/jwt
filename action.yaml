@@ -150,6 +150,8 @@ runs:
           echo "::add-mask::${JWT}"
         fi
 
+        echo got here
+
         JWT_IS_VALID=$(
           jq -n -r -L "$JQ_LIB_PATH" --arg jwt "$JWT" \
             'include "jwt"; $jwt | validate'
@@ -158,6 +160,8 @@ runs:
           echo '::error title=JWT Is Invalid::The JWT provided or generated is invalid (not parseable).'
           exit 1
         fi
+
+        echo got here 2
 
         JWT_UNSIGNED=$(
           jq -n -r -L "$JQ_LIB_PATH" --arg jwt "$JWT" \
