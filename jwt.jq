@@ -65,9 +65,26 @@ def verify($signature):
   | . * {
     algorithm: (.header.alg),
     jwt: $jwt,
-    verified: (($signature | @base64d) == (.signature | @base64d)),
+    verified: (($signature | url_safe_decode | @base64d) == (.signature | @base64d)),
   }
   | to_entries
   | sort_by(.key)
   | from_entries
+  ;
+
+def github_output:
+  to_entries
+  | map(
+    [
+      "\(.key)<<EOF",  
+      if (.value | type) == "object" then
+        .value | tojson
+      else
+        .value
+      end,
+      "EOF"
+    ]
+  )
+  | flatten
+  | join("\n")
   ;

@@ -51,22 +51,22 @@ inputs:
 outputs:
   algorithm:
     description: Signing algorithm.
-    value: ${{ fromJSON(steps.decode.outputs.json).algorithm }}
+    value: ${{ steps.decode.outputs.algorithm }}
   header:
     description: Decoded header in JSON.
-    value: ${{ toJSON(fromJSON(steps.decode.outputs.json).header) }}
+    value: ${{ steps.decode.outputs.header }}
   json:
     description: Decoded JWT object in JSON format.
     value: ${{ steps.decode.outputs.json }}
   jwt:
     description: Encoded & signed JWT.
-    value: ${{ fromJSON(steps.decode.outputs.json).jwt }}
+    value: ${{ steps.decode.outputs.jwt }}
   payload:
     description: Decoded payload in JSON.
-    value: ${{ toJSON(fromJSON(steps.decode.outputs.json).payload) }}
+    value: ${{ steps.decode.outputs.payload }}
   verified:
     description: Boolean-as-string ("true" / "false") indicating if the JWT is verified.
-    value:  ${{ fromJSON(steps.decode.outputs.json).verified }}
+    value: ${{ steps.decode.outputs.verified }}
 
 runs:
   using: composite
@@ -150,8 +150,6 @@ runs:
           echo "::add-mask::${JWT}"
         fi
 
-        echo got here
-
         JWT_IS_VALID=$(
           jq -n -r -L "$JQ_LIB_PATH" --arg jwt "$JWT" \
             'include "jwt"; $jwt | validate'
@@ -160,8 +158,6 @@ runs:
           echo '::error title=JWT Is Invalid::The JWT provided or generated is invalid (not parseable).'
           exit 1
         fi
-
-        echo got here 2
 
         JWT_UNSIGNED=$(
           jq -n -r -L "$JQ_LIB_PATH" --arg jwt "$JWT" \
@@ -184,12 +180,15 @@ runs:
           jq -n -L "$JQ_LIB_PATH" --arg jwt "$JWT" --arg signature "$SIGNATURE" \
             'include "jwt"; $jwt | verify($signature)'
         )
-        echo -e "json<<EOF\n${JSON}\nEOF" >>"${GITHUB_OUTPUT}"
         if "$ENABLE_DISPLAY" ; then
           echo '::group::JWT Decoded'
           jq -C . <<<"$JSON"
           echo '::endgroup::'
         fi
+
+        jq -n -r -L "$JQ_LIB_PATH" --arg jwt "$JWT" --arg signature "$SIGNATURE" \
+          'include "jwt"; $jwt | verify($signature) | github_output' >>"${GITHUB_OUTPUT}"
+
         VERIFIED=$(jq -n -r .verified <<<"${JSON}")
         if "$ENABLE_FAIL_ON_UNVERIFIED" && [ "$VERIFIED" == false ] ; then
           echo '::error title=JWT Failed Verification::Was unable to verify the token using the supplied secret.'
