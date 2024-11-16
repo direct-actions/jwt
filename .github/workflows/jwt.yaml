@@ -60,8 +60,7 @@ jobs:
             }
           raw-input: true
 
-      - id: jwt-encode
-        name: JSON Web Token (JWT) - Encode jwt.io demo token
+      - name: JSON Web Token (JWT) - Encode custom token
         uses: ./
         with:
           enable-display: true
