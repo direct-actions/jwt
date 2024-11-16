@@ -11,8 +11,12 @@ description: >
 inputs:
   algorithm:
     default: HS256
-    description: (Encode) Signing algorithm for encoding a new JWT.
+    description: (Encode) Signing algorithm for encoding a new JWT, only HS256 currently supported.
     type: string
+  debug:
+    default: false
+    description: (Decode/Encode) Enable debugging output.
+    type: boolean
   enable-display:
     default: false
     description: (Decode/Encode) Enable pretty colorized display of JWT decoded object.
@@ -21,19 +25,19 @@ inputs:
     default: true
     description: (Decode) Fail if the JWT signing cannot be verified.
     type: boolean
-  enable-mask-jwt: 
+  enable-mask-jwt:
     default: false
     description: (Decode/Encode) Enable masking of entire JWT in Actions output.
     type: boolean
-  enable-mask-signature: 
+  enable-mask-signature:
     default: true
     description: (Decode/Encode) Enable masking of JWT signature in Actions output.
     type: boolean
-  headers:
+  header:
     default: |
       alg: ${ALGORITHM}
       typ: JWT
-    description: (Encode) Header jq template for encoding a new JWT (JSON or YAML).
+    description: (Encode) Header yq template for encoding a new JWT (JSON or YAML).
     type: string
   jwt:
     description: (Decode) JWT that will be decoded & verified.
@@ -44,34 +48,34 @@ inputs:
     required: false
     type: string
   secret:
-    description: (Decode/Encode) (Optional) Secret used to sign or verify a signed JWT.
-    required: false
+    default: your-256-bit-secret
+    description: (Decode/Encode) Secret used to sign or verify a signed JWT.
     type: string
 
 outputs:
   algorithm:
     description: Signing algorithm.
-    value: ${{ fromJSON(steps.decode.outputs.json).algorithm }}
-  headers:
-    description: Decoded headers in JSON.
-    value: ${{ toJSON(fromJSON(steps.decode.outputs.json).headers) }}
-  json:
-    description: Decoded JWT object in JSON format.
-    value: ${{ steps.decode.outputs.json }}
+    value: ${{ steps.decode.outputs.algorithm }}
+  header:
+    description: Decoded header in JSON.
+    value: ${{ steps.decode.outputs.header }}
   jwt:
     description: Encoded & signed JWT.
-    value: ${{ fromJSON(steps.decode.outputs.json).jwt }}
+    value: ${{ steps.decode.outputs.jwt }}
   payload:
     description: Decoded payload in JSON.
-    value: ${{ toJSON(fromJSON(steps.decode.outputs.json).payload) }}
+    value: ${{ steps.decode.outputs.payload }}
+  signature:
+    description: Decoded signature in Base64 (not URL safe Base64).
+    value: ${{ steps.decode.outputs.signature }}
   verified:
     description: Boolean-as-string ("true" / "false") indicating if the JWT is verified.
-    value:  ${{ fromJSON(steps.decode.outputs.json).verified }}
+    value: ${{ steps.decode.outputs.verified }}
 
 runs:
   using: composite
   steps:
-    - if: env.ACTIONS_STEP_DEBUG == 'true'
+    - if: runner.debug || inputs.debug == 'true'
       run: |
         # JWT - Debug
         echo ::group::Debug - utility versions
@@ -85,7 +89,7 @@ runs:
         ALGORITHM: ${{ inputs.algorithm }}
         ENABLE_MASK_JWT: ${{ inputs.enable-mask-jwt == 'true' && 'true' || 'false' }}
         ENABLE_MASK_SIGNATURE: ${{ inputs.enable-mask-signature == 'true' && 'true' || 'false' }}
-        HEADERS: ${{ inputs.headers }}
+        HEADER: ${{ inputs.header }}
         JQ_LIB_PATH: ${{ github.action_path }}
         PAYLOAD: ${{ inputs.payload }}
         SECRET: ${{ inputs.secret }}
@@ -93,29 +97,25 @@ runs:
       if: inputs.payload != ''
       run: |
         # JWT - Encode Token
-        HEADERS=$(yq -o json --expression 'with_entries(.value |= envsubst)' <<<"${HEADERS}" | jq -c)
+        HEADER=$(yq -o json --expression 'with_entries(.value |= envsubst)' <<<"${HEADER}" | jq -c)
         PAYLOAD=$(yq -o json <<<"${PAYLOAD}" | jq -c)
-        if '${{ env.ACTIONS_STEP_DEBUG == 'true' && 'true' || 'false' }}' ; then
-          echo -e "::group::Debug - headers\n${HEADERS}\n::endgroup::"
+        if '${{ (runner.debug || inputs.debug == 'true') && 'true' || 'false' }}' ; then
+          echo -e "::group::Debug - header\n${HEADER}\n::endgroup::"
           echo -e "::group::Debug - payload\n${PAYLOAD}\n::endgroup::"
         fi
         JWT_UNSIGNED=$(
           jq -n -r -L "$JQ_LIB_PATH" \
-            --arg headers "$HEADERS" \
+            --arg header "$HEADER" \
             --arg payload "$PAYLOAD" \
             ' include "jwt";
-              [($headers | url_safe_base64_encode), ($payload | url_safe_base64_encode)]
+              [($header | url_safe_base64_encode), ($payload | url_safe_base64_encode)]
               | join(".")
             '
         )
-        SIGNATURE_ARGS=()
-        if '${{ inputs.SECRETS == '' && 'false' || 'true' }}' ; then 
-          SIGNATURE_ARGS=(-hmac "$SECRET")
-        fi
         SIGNATURE=$(
           echo -n "$JWT_UNSIGNED" |
-            openssl dgst -binary "${SIGNATURE_ARGS[@]}" -sha256 |
-            base64 |
+            openssl dgst -binary -hmac "$SECRET" -sha256 |
+            openssl base64 -e -A |
             jq -r -L "$JQ_LIB_PATH" -R 'include "jwt"; url_safe_encode'
         )
         if $ENABLE_MASK_SIGNATURE ; then
@@ -131,7 +131,6 @@ runs:
           echo "::add-mask::${JWT}"
         fi
         echo -e "jwt<<EOF\n${JWT}\nEOF" >>"${GITHUB_OUTPUT}"
-
       shell: bash
 
     - env:
@@ -148,18 +147,25 @@ runs:
         if $ENABLE_MASK_JWT ; then
           echo "::add-mask::${JWT}"
         fi
+        if ${{ inputs.secret == 'your-256-bit-secret' && 'true' || 'false' }}  ; then
+          echo '::warning title=Unsafe (default) secret used::The secret "your-256-bit-secret",'\
+            'which is the default from jwt.io, is being used. This is NOT SAFE for production.'
+        fi
+        JWT_IS_VALID=$(
+          jq -n -r -L "$JQ_LIB_PATH" --arg jwt "$JWT" \
+            'include "jwt"; $jwt | validate'
+        )
+        if [ "$JWT_IS_VALID" != 'true' ] ; then
+          echo '::error title=JWT Is Invalid::The JWT provided or generated is invalid (not parseable).'
+        fi
         JWT_UNSIGNED=$(
           jq -n -r -L "$JQ_LIB_PATH" --arg jwt "$JWT" \
             'include "jwt"; $jwt | decode_raw.unsigned'
         )
-        SIGNATURE_ARGS=()
-        if '${{ inputs.SECRETS == '' && 'false' || 'true' }}' ; then 
-          SIGNATURE_ARGS=(-hmac "$SECRET")
-        fi
         SIGNATURE=$(
           echo -n "$JWT_UNSIGNED" |
-            openssl dgst -binary "${SIGNATURE_ARGS[@]}" -sha256 |
-            base64 |
+            openssl dgst -binary -hmac "$SECRET" -sha256 |
+            openssl base64 -e -A |
             jq -r -L "$JQ_LIB_PATH" -R 'include "jwt"; url_safe_encode'
         )
         if $ENABLE_MASK_SIGNATURE ; then
@@ -169,15 +175,16 @@ runs:
           jq -n -L "$JQ_LIB_PATH" --arg jwt "$JWT" --arg signature "$SIGNATURE" \
             'include "jwt"; $jwt | verify($signature)'
         )
-        echo -e "json<<EOF\n${JSON}\nEOF" >>"${GITHUB_OUTPUT}"
         if "$ENABLE_DISPLAY" ; then
-          echo '::group::JWT Decoded'
+          echo '::group::JWT Display'
           jq -C . <<<"$JSON"
           echo '::endgroup::'
         fi
-        VERIFIED=$(jq -n -r .verified <<<"${JSON}")
-        if "$ENABLE_FAIL_ON_UNVERIFIED" && [ "$VERIFIED" == false ] ; then
-          echo '::error title=JWT Failed Verification::Was unable to verify the token using the supplied secret.'
-          exit 1
+        jq -n -r -L "$JQ_LIB_PATH" --arg jwt "$JWT" --arg signature "$SIGNATURE" \
+          'include "jwt"; $jwt | verify($signature) | github_output' >>"${GITHUB_OUTPUT}"
+        VERIFIED=$(jq -r .verified <<<"${JSON}")
+        if "$ENABLE_FAIL_ON_UNVERIFIED" && [ "$VERIFIED" != true ] ; then
+          echo '::error title=JWT Failed Verification::Unable to verify the ${{ inputs.algorithm }}' \
+            'signed token using the supplied secret.'
         fi
       shell: bash

@@ -26,35 +26,65 @@ def url_safe_base64_encode:
   | url_safe_encode
   ;
 
+def jwt_regex:
+  "^(?<header>[0-9A-Za-z_-]+)\\.(?<payload>[0-9A-Za-z_-]+)\\.(?<signature>[0-9A-Za-z_-]+)$"
+  ;
+
 def validate:
-  (split(".") | length) as $jwt_fields
-  | if $jwt_fields != 3 then
-      "Invalid jwt - contains \($jwt_fields) fields, requires 3."
-      | error
+  try (
+    if test(jwt_regex; "") then
+      capture(jwt_regex; "") as $captured
+      | $captured
+      | try (.header | url_safe_base64_decode | fromjson | $captured) catch ("JWT header invalid." | error)
+      | try (.payload | url_safe_base64_decode | fromjson | $captured) catch ("JWT payload invalid." | error)
+      | try (.signature | url_safe_base64_decode | $captured) catch ("JWT payload invalid." | error)
     else
-      .
+      "Invalid JWT, unable to parse." | error
     end
+    | "true"
+  ) catch .
   ;
 
 def decode_raw:
-  validate
-  | {
-    headers: (split(".")[0] | url_safe_base64_decode | fromjson),
-    payload: (split(".")[1] | url_safe_base64_decode | fromjson),
-    unsigned: (split(".")[0] + "." + split(".")[1]),
-    signature: (split(".")[2] | url_safe_decode),
-  }
+  if validate != "true" then
+    validate | error
+  else
+    capture(jwt_regex; "")
+    | {
+      header: (.header | url_safe_base64_decode | fromjson),
+      payload: (.payload | url_safe_base64_decode | fromjson),
+      unsigned: "\(.header).\(.payload)",
+      signature: (.signature | url_safe_decode),
+    }
+  end
   ;
 
 def verify($signature):
   . as $jwt
-  | decode_raw 
+  | decode_raw
   | . * {
-    algorithm: (.headers.alg),
+    algorithm: (.header.alg),
     jwt: $jwt,
-    verified: (($signature | @base64d) == (.signature | @base64d)),
+    verified: (($signature | url_safe_decode | @base64d) == (.signature | @base64d)),
   }
   | to_entries
   | sort_by(.key)
   | from_entries
+  ;
+
+def github_output:
+  to_entries
+  | map(
+    [
+      "\(.key)<<EOF",  
+      if (.value | type) == "object" then
+        .value | tojson
+      else
+        .value
+      end,
+      "EOF"
+    ]
+  )
+  | flatten
+  | join("\n")
   ;
